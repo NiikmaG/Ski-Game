@@ -4,10 +4,13 @@ using UnityEngine.InputSystem;
 public class PlayerControlle : MonoBehaviour
 {
     [Header("Speed")]
-    [SerializeField] private float minSpeed = 4f;
-    [SerializeField] private float maxSpeed = 800f;
-    [SerializeField] private float maxAcceleration = 400f;
-    [SerializeField] private float minAcceleration = -150f;
+    [SerializeField] private float minSpeed = 8f;
+    [SerializeField] private float maxSpeed = 1200f;
+
+    [Header("Carving")]
+    [SerializeField] private float downhillAcceleration = 700f; // pull of gravity with skis pointed straight down the fall line
+    [SerializeField] private float carveBraking = 500f;         // speed scrubbed off while edging through a turn
+    [SerializeField] private float snowFriction = 60f;          // constant drag from snow, even when gliding straight
 
     [Header("Turning")]
     [SerializeField] private float maxTurnRate = 90f;
@@ -59,10 +62,19 @@ public class PlayerControlle : MonoBehaviour
         if (Mathf.Abs(currentTurnRate) > 0.01f)
             rb.MoveRotation(rb.rotation * Quaternion.Euler(0f, currentTurnRate * Time.fixedDeltaTime, 0f));
 
-        // Speed based on angle to slope
-        float angle = Mathf.Abs(transform.eulerAngles.y - 180f);
-        float accel = Remap(0f, 90f, maxAcceleration, minAcceleration, angle);
-        speed += accel * Time.fixedDeltaTime;
+        // Gravity pulls along the skis: full acceleration pointed down the fall line,
+        // nothing when traversing across the slope
+        float angle = Mathf.Abs(Mathf.DeltaAngle(transform.eulerAngles.y, 180f));
+        float fallLineAlignment = Mathf.Cos(angle * Mathf.Deg2Rad);
+        float accel = downhillAcceleration * fallLineAlignment - snowFriction;
+
+        // Edging through a turn digs the edges in and scrubs speed,
+        // harder the faster you are going
+        float edgeFactor = Mathf.Abs(currentTurnRate) / maxTurnRate;
+        accel -= carveBraking * edgeFactor * (0.4f + 0.6f * speed / maxSpeed);
+
+        if (isGrounded)
+            speed += accel * Time.fixedDeltaTime;
         speed = Mathf.Clamp(speed, minSpeed, maxSpeed);
 
         animator.SetFloat("playerSpeed", speed);
@@ -73,11 +85,6 @@ public class PlayerControlle : MonoBehaviour
 
         if (keepInsideTrack)
             KeepInsideTrack();
-    }
-
-    private float Remap(float oldMin, float oldMax, float newMin, float newMax, float val)
-    {
-        return ((val - oldMin) / (oldMax - oldMin)) * (newMax - newMin) + newMin;
     }
 
     private void KeepInsideTrack()
